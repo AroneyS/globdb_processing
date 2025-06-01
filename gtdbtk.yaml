@@ -1,0 +1,8 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - gtdbtk = 2.4.0
+  - skani
+variables:
+  GTDBTK_DATA_PATH: /work/microbiome/db/gtdb/gtdb_release220/auxillary_files/gtdbtk_package/full_package/release220

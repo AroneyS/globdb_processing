@@ -1,0 +1,10 @@
+name: public_genomes
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.6
+  - snakemake=8.15.*
+  - snakemake-executor-plugin-cluster-generic=1.0.*
+  - mamba=1.5.*
+  - polars=1.0.*

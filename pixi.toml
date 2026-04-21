@@ -1,0 +1,57 @@
+[workspace]
+authors = ["AroneyS <samuel.aroney@qut.edu.au>"]
+channels = ["conda-forge", "bioconda"]
+name = "GlobDB_processing"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[environments]
+default = ["main"]
+gtdbtk = ["gtdbtk"]
+phylorank = ["phylorank"]
+name-clades = ["name-clades"]
+r-treedataverse = ["r-treedataverse"]
+
+[feature.main.dependencies]
+python = ">=3.8"
+polars = "*"
+snakemake = ">=8"
+snakemake-executor-plugin-cluster-generic = ">=1"
+
+[feature.gtdbtk.dependencies]
+gtdbtk = "==2.6.1"
+skani = "*"
+
+[feature.gtdbtk.activation]
+env = { GTDBTK_DATA_PATH = "/work/microbiome/db/gtdb/gtdb_release226/auxillary_files/gtdbtk_package/full_package/release226" }
+
+[feature.phylorank.dependencies]
+python = ">=3.6,<3.11"
+phylorank = "*"
+packaging = "*"
+matplotlib = "==3.3.4"
+mpld3 = "==0.5.10"
+
+[feature.name-clades.dependencies]
+python = ">=3.6"
+polars = "==0.20.3"
+tqdm = "*"
+
+[feature.r-treedataverse.dependencies]
+python = ">=3.6"
+radian = "*"
+r-base = "*"
+r-tidyverse = "*"
+r-here = "*"
+r-bookdown = "*"
+r-cowplot = "*"
+r-ape = "*"
+r-tidytree = "*"
+bioconductor-treeio = "*"
+bioconductor-ggtree = "*"
+bioconductor-ggtreeExtra = "*"
+r-gggenes = "*"
+r-languageserver = "*"
+r-httpgd = "*"
+r-svglite = "*"
+r-castor = "*"

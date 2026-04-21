@@ -1,35 +1,33 @@
 """
 Globdb processing pipeline
 
-conda activate globdb_processing
-
-Local
-snakemake \
+pixi run snakemake \
     --snakefile scripts/globdb_processing.smk \
-    --directory results/globdb_processing/20250402 \
-    --software-deployment-method conda --conda-prefix /mnt/weka/pkg/cmr/aroneys/envs_aqua \
-    --keep-going --rerun-triggers mtime --cores 32
-
-Cluster submission
-snakemake \
-    --snakefile scripts/globdb_processing.smk \
-    --directory results/globdb_processing/20250402 \
-    --software-deployment-method conda --conda-prefix /mnt/weka/pkg/cmr/aroneys/envs_aqua \
+    --directory results/globdb_processing/20260408 \
     --profile aqua --retries 3 \
-    --keep-going --rerun-triggers mtime --cores 64 --local-cores 32
+    --cores 64 --local-cores 1 \
+    --rerun-triggers mtime
 """
 
 import os
 import polars as pl
 
-GLOBDB_FASTA_FOLDER = "/work/microbiome/ibis/public_genomes/globdb_r226/data/globdb_r226_genome_fasta_splits/"
-GLOBDB_INFO = "/work/microbiome/ibis/public_genomes/globdb_r226/data/globdb_r226_tax_plus_stats.tsv"
+SNAKEFILE_DIR = workflow.basedir
+
+GLOBDB_INFO = "/work/microbiome/ibis/public_genomes/globdb_r232/globdb_r232_domains.tsv"
+GLOBDB_FASTA_PATHS = "/work/microbiome/ibis/public_genomes/globdb_r232/genome_fasta_paths.tsv"
 DOMAINS = ["archaea", "bacteria"]
-METAPACKAGE = "/work/microbiome/db/singlem/S4.3.0.GTDB_r220.metapackage_20240523.smpkg.zb"
-GTDB_ARC_TAX = "/work/microbiome/ibis/public_genomes/data/taxonomy_files/ar53_taxonomy_r226.tsv"
-GTDB_BAC_TAX = "/work/microbiome/ibis/public_genomes/data/taxonomy_files/bac120_taxonomy_r226.tsv"
-GTDB_ARC_RED = [0.22112310781366834, 0.3878238738848844, 0.5300294639396943, 0.7336130438906969, 0.912225515599894]
-GTDB_BAC_RED = [0.3226932930969102, 0.4596791881303727, 0.6142743482438423, 0.7621761461217935, 0.9212198070258302]
+GTDB_ARC_TAX = "/work/microbiome/msingle/mess/214_R232_renew/ar53_taxonomy_r232.tsv"
+GTDB_BAC_TAX = "/work/microbiome/msingle/mess/214_R232_renew/bac120_taxonomy_r232.tsv"
+GTDB_ARC_RED = [0.2859284763413424, 0.42852344844350987, 0.5692329378979698, 0.758762614031466, 0.9250910192387802]
+GTDB_BAC_RED = [0.3399759686386926, 0.4764466993167481, 0.6467334973890564, 0.7972969419385083, 0.9438360803986985]
+
+globdb_paths = (
+    pl.read_csv(GLOBDB_FASTA_PATHS, separator="\t", has_header=False, new_columns=["fasta"])
+    .with_columns(
+        f = pl.col("fasta").str.extract(r"([^/]+\.fa\.gz)$"),
+    )
+)
 
 globdb = (
     pl.read_csv(GLOBDB_INFO, separator="\t")
@@ -43,15 +41,7 @@ globdb = (
             .otherwise(pl.lit("unknown")),
         f = pl.concat_str(pl.col("ID"), pl.lit(".fa.gz")),
         )
-    .with_columns(
-        fasta = pl.concat_str(
-            pl.lit(GLOBDB_FASTA_FOLDER),
-            pl.col("f").str.head(5), pl.lit("/"),
-            pl.col("f").str.slice(5, 4), pl.lit("/"),
-            pl.col("f").str.slice(9, 4), pl.lit("/"),
-            pl.col("f")
-            ),
-        )
+    .join(globdb_paths, on="f")
     .filter(pl.col("domain") != "unknown")
 )
 
@@ -101,10 +91,8 @@ rule gtdbtk_identify:
         "{domain}/gtdbtk_identify/benchmark.txt"
     log:
         "{domain}/logs/gtdbtk_identify.log"
-    conda:
-        "gtdbtk.yaml"
     shell:
-        "gtdbtk identify "
+        "pixi run -e gtdbtk gtdbtk identify "
         "--batchfile {input} "
         "--out_dir {output} "
         "--cpus {threads} "
@@ -123,10 +111,8 @@ rule gtdbtk_align:
         "{domain}/gtdbtk_align/benchmark.txt"
     log:
         "{domain}/logs/gtdbtk_align.log"
-    conda:
-        "gtdbtk.yaml"
     shell:
-        "gtdbtk align "
+        "pixi run -e gtdbtk gtdbtk align "
         "--skip_gtdb_refs "
         "--identify_dir {input.identify} "
         "--out_dir {output} "
@@ -148,10 +134,8 @@ rule gtdbtk_infer:
         msa = lambda wildcards: "gtdbtk.ar53.user_msa.fasta.gz" if wildcards.domain == "archaea" else "gtdbtk.bac120.user_msa.fasta.gz",
     log:
         "{domain}/logs/gtdbtk_infer.log"
-    conda:
-        "gtdbtk.yaml"
     shell:
-        "gtdbtk infer "
+        "pixi run -e gtdbtk gtdbtk infer "
         "--msa_file {input.align}/align/{params.msa} "
         "--out_dir {output} "
         "--cpus {threads} "
@@ -177,7 +161,7 @@ rule gtdbtk_root:
         tax = "{domain}/gtdb_taxonomy.tsv",
     output:
         directory("{domain}/gtdbtk_root"),
-    threads: 1
+    threads: 4
     resources:
         mem_mb=get_mem_mb,
         runtime = lambda wildcards, attempt: 48*60*attempt,
@@ -187,10 +171,8 @@ rule gtdbtk_root:
         "{domain}/gtdbtk_root/benchmark.txt"
     log:
         "{domain}/logs/gtdbtk_root.log"
-    conda:
-        "gtdbtk.yaml"
     shell:
-        "gtdbtk root "
+        "pixi run -e gtdbtk gtdbtk root "
         "--input_tree {input.infer}/gtdbtk.unrooted.tree "
         "--outgroup_taxon {params.outgroup} "
         "--custom_taxonomy_file {input.tax} "
@@ -211,10 +193,8 @@ rule gtdbtk_decorate:
         "{domain}/gtdbtk_decorate/benchmark.txt"
     log:
         "{domain}/logs/gtdbtk_decorate.log"
-    conda:
-        "gtdbtk.yaml"
     shell:
-        "gtdbtk decorate "
+        "pixi run -e gtdbtk gtdbtk decorate "
         "--input_tree {input.root}/gtdbtk.rooted.tree "
         "--custom_taxonomy_file {input.tax} "
         "--output_tree {output}/gtdbtk.decorated.tree "
@@ -234,10 +214,8 @@ rule phylorank_red:
         "{domain}/phylorank/benchmark.txt"
     log:
         "{domain}/logs/phylorank.log"
-    conda:
-        "phylorank.yml"
     shell:
-        "phylorank outliers "
+        "pixi run -e phylorank phylorank outliers "
         "{input.tree}/gtdbtk.decorated.tree "
         "{input.tax} "
         "{output} "
@@ -256,14 +234,18 @@ rule tree2tbl:
     params:
         red_cutoffs = lambda wildcards: GTDB_ARC_RED if wildcards.domain == "archaea" else GTDB_BAC_RED,
         input_tree = "gtdbtk.decorated.red_decorated.tree",
+        script = os.path.join(SNAKEFILE_DIR, "tree2tbl.R"),
     benchmark:
         "{domain}/phylorank_tree_benchmark.txt"
     log:
         "{domain}/logs/tree2tbl.log"
-    conda:
-        "r-treedataverse.yml"
-    script:
-        "tree2tbl.R"
+    shell:
+        "pixi run -e r-treedataverse Rscript {params.script} "
+        "--input-tree {input.dir}/{params.input_tree} "
+        "--taxonomy {input.tax} "
+        "--output-tree {output.tree} "
+        "--red-cutoffs '{params.red_cutoffs}' "
+        "&> {log} "
 
 rule name_clades:
     input:
@@ -284,10 +266,8 @@ rule name_clades:
         "{domain}/name_clades/benchmark.txt"
     log:
         "{domain}/logs/name_clades.log"
-    conda:
-        "name_clades.yml"
     shell:
-        "python {params.script} "
+        "pixi run -e name-clades python {params.script} "
         "--tree-df {input.tree} "
         "--metadata {params.metadata} "
         "--gtdb {input.tax} "
@@ -322,6 +302,8 @@ rule summarise_clades:
                         taxon_novelty = pl.col("clade").str.head(1),
                         magset = pl.when(pl.col("genome_rep").str.contains(r"^MGYG"))
                             .then(pl.lit("MGYG"))
+                            .when(pl.col("genome_rep").str.contains(r"^GWH"))
+                            .then(pl.lit("GWH"))
                             .otherwise(pl.col("genome_rep").str.extract(r"^([^_]+)"))
                         )
                     .filter(pl.col("magset").is_in(["GCA", "GCF"]).not_())
@@ -349,10 +331,11 @@ rule summarise_clades:
             pl.concat([
                 magsets,
                 magsets
+                    .drop("magset")
                     .group_by(1)
                     .agg(pl.all().sum())
                     .drop("literal")
                     .with_columns(magset = pl.lit("all"))
-                ])
+                ], how="diagonal")
             .write_csv(output[0], separator="\t", include_header=True)
         )

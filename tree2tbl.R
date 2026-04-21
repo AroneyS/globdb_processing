@@ -7,11 +7,32 @@ library(tidytree)
 library(treeio)
 library(tidyverse)
 
-# Snakemake inputs
-input_tree <- str_c(snakemake@input[["dir"]], "/", snakemake@params[["input_tree"]])
-taxonomy <- snakemake@input[["tax"]]
-output_tree <- snakemake@output[["tree"]]
-red_cutoffs <- snakemake@params[["red_cutoffs"]]
+args <- commandArgs(trailingOnly = TRUE)
+if (length(args) %% 2 != 0) {
+  stop("Arguments must be provided as --key value pairs")
+}
+
+print("Processing arguments...")
+
+arg_map <- list()
+for (i in seq(1, length(args), by = 2)) {
+  arg_map[[args[i]]] <- args[i + 1]
+}
+
+required_args <- c("--input-tree", "--taxonomy", "--output-tree", "--red-cutoffs")
+missing_args <- setdiff(required_args, names(arg_map))
+if (length(missing_args) > 0) {
+  stop(paste("Missing required arguments:", paste(missing_args, collapse = ", ")))
+}
+
+input_tree <- arg_map[["--input-tree"]]
+print(paste("Input tree:", input_tree))
+taxonomy <- arg_map[["--taxonomy"]]
+print(paste("Taxonomy:", taxonomy))
+output_tree <- arg_map[["--output-tree"]]
+print(paste("Output tree:", output_tree))
+red_cutoffs <- str_split(arg_map[["--red-cutoffs"]], "\\s+")[[1]] %>% as.numeric()
+print(paste("RED cutoffs:", paste(red_cutoffs, collapse = ", ")))
 
 ################################
 ### Extract info from labels ###
@@ -159,6 +180,9 @@ produce_ranks <- function(median_reds) {
 
 rank_red <- tibble(rank = c("", "Phylum", "Class", "Order", "Family", "Genus", "Species/Strain")) %>%
   left_join(produce_ranks(red_cutoffs))
+
+print("RED cutoffs and ranks:")
+print(rank_red)
 
 # tribble(
 #     ~red, ~exp,

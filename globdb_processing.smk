@@ -161,9 +161,9 @@ rule gtdbtk_root:
         tax = "{domain}/gtdb_taxonomy.tsv",
     output:
         directory("{domain}/gtdbtk_root"),
-    threads: 4
+    threads: 1
     resources:
-        mem_mb=get_mem_mb,
+        mem_mb = lambda wildcards: get_mem_mb(wildcards) * 4,
         runtime = lambda wildcards, attempt: 48*60*attempt,
     params:
         outgroup = lambda wildcards: "p__Altiarchaeota" if wildcards.domain == "archaea" else "p__Fusobacteriota",
@@ -187,7 +187,7 @@ rule gtdbtk_decorate:
         directory("{domain}/gtdbtk_decorate"),
     threads: 1
     resources:
-        mem_mb=get_mem_mb,
+        mem_mb = lambda wildcards: get_mem_mb(wildcards) * 8,
         runtime = lambda wildcards, attempt: 48*60*attempt,
     benchmark:
         "{domain}/gtdbtk_decorate/benchmark.txt"

@@ -3,7 +3,7 @@ Globdb processing pipeline
 
 pixi run snakemake \
     --snakefile scripts/globdb_processing.smk \
-    --directory results/globdb_processing/20260408 \
+    --directory results/globdb_processing/20260430 \
     --profile aqua --retries 3 \
     --cores 64 --local-cores 1 \
     --rerun-triggers mtime
@@ -14,8 +14,8 @@ import polars as pl
 
 SNAKEFILE_DIR = workflow.basedir
 
-GLOBDB_INFO = "/work/microbiome/ibis/public_genomes/globdb_r232/globdb_r232_domains.tsv"
-GLOBDB_FASTA_PATHS = "/work/microbiome/ibis/public_genomes/globdb_r232/genome_fasta_paths.tsv"
+GLOBDB_INFO = "/work/microbiome/ibis/public_genomes/globdb_r232/globdb_r232_domains_v2.tsv"
+GLOBDB_FASTA_PATHS = "/work/microbiome/ibis/public_genomes/globdb_r232/genome_fasta_paths_v2.tsv"
 DOMAINS = ["archaea", "bacteria"]
 GTDB_ARC_TAX = "/work/microbiome/msingle/mess/214_R232_renew/ar53_taxonomy_r232.tsv"
 GTDB_BAC_TAX = "/work/microbiome/msingle/mess/214_R232_renew/bac120_taxonomy_r232.tsv"
@@ -64,6 +64,7 @@ rule all:
     input:
         expand("{domain}/name_clades", domain=DOMAINS),
         expand("{domain}/clade_summary.tsv", domain=DOMAINS),
+        expand("{domain}/final_decoration", domain=DOMAINS),
 
 rule gtdbtk_batch:
     output:
@@ -163,7 +164,7 @@ rule gtdbtk_root:
         directory("{domain}/gtdbtk_root"),
     threads: 1
     resources:
-        mem_mb = lambda wildcards: get_mem_mb(wildcards) * 4,
+        mem_mb = lambda wildcards, threads: get_mem_mb(wildcards, threads) * 4,
         runtime = lambda wildcards, attempt: 48*60*attempt,
     params:
         outgroup = lambda wildcards: "p__Altiarchaeota" if wildcards.domain == "archaea" else "p__Fusobacteriota",
@@ -187,7 +188,7 @@ rule gtdbtk_decorate:
         directory("{domain}/gtdbtk_decorate"),
     threads: 1
     resources:
-        mem_mb = lambda wildcards: get_mem_mb(wildcards) * 8,
+        mem_mb = lambda wildcards, threads: get_mem_mb(wildcards, threads) * 8,
         runtime = lambda wildcards, attempt: 48*60*attempt,
     benchmark:
         "{domain}/gtdbtk_decorate/benchmark.txt"
@@ -339,3 +340,40 @@ rule summarise_clades:
                 ], how="diagonal")
             .write_csv(output[0], separator="\t", include_header=True)
         )
+
+rule combined_taxonomy:
+    input:
+        globdb = "{domain}/name_clades",
+        gtdb = "{domain}/gtdb_taxonomy.tsv",
+    output:
+        "{domain}/combined_taxonomy.tsv",
+    threads: 1
+    localrule: True
+    params:
+        globdb = "{domain}/name_clades/genome_taxonomy.tsv",
+    log:
+        "{domain}/logs/combined_taxonomy.log"
+    shell:
+        "cp {input.gtdb} {output} && "
+        "tail -n+2 {params.globdb} >> {output} "
+
+rule final_decoration:
+    input:
+        root = "{domain}/gtdbtk_root",
+        tax = "{domain}/combined_taxonomy.tsv",
+    output:
+        directory("{domain}/final_decoration"),
+    threads: 1
+    resources:
+        mem_mb = lambda wildcards, threads, attempt: get_mem_mb(wildcards, threads) * 8 * attempt,
+        runtime = lambda wildcards, attempt: 48*60*attempt,
+    benchmark:
+        "{domain}/final_decoration/benchmark.txt"
+    log:
+        "{domain}/logs/final_decoration.log"
+    shell:
+        "pixi run -e gtdbtk gtdbtk decorate "
+        "--input_tree {input.root}/gtdbtk.rooted.tree "
+        "--custom_taxonomy_file {input.tax} "
+        "--output_tree {output}/{wildcards.domain}.globdb_r232.decorated.tree "
+        "&> {log} "
